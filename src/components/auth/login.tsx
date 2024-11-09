@@ -15,7 +15,7 @@ const Login = () => {
   useEffect(() => {
     if (userSession.isUserSignedIn()) {
       setWalletConnected(true);
-      router.push("/dashboard");
+      router.push("/events");
     }
   }, [router]);
 

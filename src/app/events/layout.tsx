@@ -1,6 +1,6 @@
 import Navbar from "@/components/ui/navbar";
 
-export default function DashboardLayout({
+export default function EventsLayout({
   children,
 }: {
   children: React.ReactNode;
