@@ -23,11 +23,12 @@ export default function Navbar() {
     } else {
       router.push("/");
     }
-  }, []);
+  }, [router]);
 
   const disconnectWallet = () => {
     userSession.signUserOut();
     setWalletConnected(false);
+    router.replace("/");
   };
 
   const connectWallet = async () => {
