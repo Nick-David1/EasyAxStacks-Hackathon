@@ -184,7 +184,7 @@ const PaymentStreamUI = () => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 p-4">
+    <div className="max-w-2xl mx-auto space-y-6 p-4 mt-10">
       {walletConnected && (
         <div className="flex justify-end">
           <Button
