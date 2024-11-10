@@ -12,8 +12,8 @@ path = 'contracts/sbtc-token.clar'
 clarity_version = 2
 epoch = 2.5
 
-[contracts.stream]
-path = 'contracts/stream.clar'
+[contracts.event]
+path = 'contracts/event.clar'
 clarity_version = 2
 epoch = 2.5
 [repl.analysis]

@@ -27,10 +27,10 @@ plan:
             anchor-block-only: true
             clarity-version: 2
         - contract-publish:
-            contract-name: stream
+            contract-name: event
             expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            cost: 59800
-            path: contracts/stream.clar
+            cost: 71610
+            path: contracts/event.clar
             anchor-block-only: true
             clarity-version: 2
       epoch: "2.5"
