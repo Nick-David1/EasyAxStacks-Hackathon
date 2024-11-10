@@ -11,8 +11,8 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   uintCV,
-  tupleCV,
   principalCV,
+  stringAsciiCV,
   PostConditionMode,
 } from "@stacks/transactions";
 import {
@@ -28,28 +28,25 @@ import {
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
 import { Label } from "../ui/label";
-import StreamBalance from "@/components/StreamBalance";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useForm } from "react-hook-form";
 
-interface Stream {
+interface Event {
   id: number;
-  recipient: string;
-  initialBalance: number;
-  timeframe: {
-    startBlock: number;
-    stopBlock: number;
-  };
-  paymentPerBlock: number;
-  startedAt: string;
+  organizer: string;
+  name: string;
+  date: number;
+  location: string;
+  maxCapacity: number;
+  stakeAmount: number;
+  participants: string[];
   status: string;
 }
 
@@ -76,12 +73,13 @@ const CreateEvent = () => {
   const [stakeAmount, setStakeAmount] = useState(0);
   const [streamDuration, setStreamDuration] = useState("2");
   const [activeStep, setActiveStep] = useState(0);
-  const [streams, setStreams] = useState<Stream[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [participantId, setParticipantId] = useState(1);
   const [participantName, setParticipantName] = useState("");
   const [participantWallet, setParticipantWallet] = useState("");
   const [participants, setParticipants] = useState<Participant[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof AttendanceSchema>>({
     resolver: zodResolver(AttendanceSchema),
@@ -103,9 +101,25 @@ const CreateEvent = () => {
   useEffect(() => {
     if (userSession.isUserSignedIn()) {
       setWalletConnected(true);
-      setActiveStep(2);
+      setActiveStep(0);
     }
   }, []);
+
+  const fetchEvents = async () => {
+    try {
+      // Assuming there's a read-only function in the contract to get all events
+
+      const response = await fetch("/api/get-events"); // You'll need to implement this API
+
+      const data = await response.json();
+
+      setEvents(data.events);
+    } catch (err) {
+      console.error("Error fetching events:", err);
+
+      setError("Failed to fetch events.");
+    }
+  };
 
   const handleAddParticipant = () => {
     if (participantName == "" || participantWallet == "") {
@@ -146,13 +160,16 @@ const CreateEvent = () => {
 
       // Step 2: Call sBTC mint function
       await openContractCall({
-        network: "testnet",
+        network: "devnet",
         contractAddress: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
         contractName: "sbtc-token",
         functionName: "mint",
         functionArgs: [
           uintCV(Math.floor(parseFloat(btcAmount) * 100000000)), // amount in sats
-          principalCV("ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM"), // recipient
+          principalCV(
+            userSession.loadUserData().profile.stxAddress.mainnet ||
+              "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM"
+          ), // recipient
         ],
         postConditionMode: PostConditionMode.Allow,
         onFinish: (result) => {
@@ -172,69 +189,44 @@ const CreateEvent = () => {
   };
 
   const createEvent = async () => {
-    if (!streamDuration || !btcAmount) {
+    if (!name || !date || !location || !maxCapacity || !stakeAmount) {
       alert("Please fill all fields");
       return;
     }
 
     setIsProcessing(true);
     try {
-      const sbtcAmount = Math.floor(parseFloat(btcAmount) * 100000000);
-      const blocksPerDay = 144;
-      const durationBlocks = parseInt(streamDuration) * blocksPerDay;
-
-      const currentBlock = await fetch("http://localhost:3999/v2/info")
-        .then((res) => res.json())
-        .then((data) => data.stacks_tip_height);
-
-      const paymentPerBlock = Math.floor(sbtcAmount / durationBlocks);
-
-      const timeframeCV = tupleCV({
-        "start-block": uintCV(currentBlock),
-        "stop-block": uintCV(currentBlock + durationBlocks),
-      });
+      const eventDate = Math.floor(new Date(date).getTime() / 1000); // Unix timestamp
+      const maxCap = maxCapacity;
+      const stakeAmt = stakeAmount; // Convert to sats
 
       await openContractCall({
-        network: "testnet",
+        network: "devnet",
         contractAddress: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
-        contractName: "stream",
-        functionName: "stream-to",
+        contractName: "event",
+        functionName: "create-event",
         functionArgs: [
-          principalCV(recipientAddress),
-          uintCV(sbtcAmount),
-          timeframeCV,
-          uintCV(paymentPerBlock),
+          stringAsciiCV(name),
+          uintCV(eventDate),
+          stringAsciiCV(location),
+          uintCV(maxCap),
+          uintCV(stakeAmt),
         ],
         postConditionMode: PostConditionMode.Allow,
         onFinish: (result) => {
-          console.log("Transaction ID:", result);
-
-          // Create stream object for UI
-          const newStream = {
-            id: streams.length + 1,
-            recipient: recipientAddress,
-            initialBalance: sbtcAmount,
-            timeframe: {
-              startBlock: currentBlock,
-              stopBlock: currentBlock + durationBlocks,
-            },
-            paymentPerBlock,
-            startedAt: new Date().toISOString(),
-            status: "active",
-          };
-
-          setStreams([...streams, newStream]);
-          setActiveStep(3);
+          console.log("Create Event Transaction ID:", result);
           setIsProcessing(false);
+          setActiveStep(3);
+          fetchEvents(); // Refresh events after creation
         },
         onCancel: () => {
-          console.log("Transaction cancelled");
+          console.log("Create Event Transaction cancelled");
           setIsProcessing(false);
         },
       });
     } catch (error) {
-      console.error("Stream creation error:", error);
-      alert("Failed to create stream. Please try again.");
+      console.error("Event creation error:", error);
+      alert("Failed to create event. Please try again.");
       setIsProcessing(false);
     }
   };
@@ -328,6 +320,7 @@ const CreateEvent = () => {
                 <label className="block text-sm font-medium mb-2">Date</label>
                 <Input
                   value={date}
+                  type="date"
                   onChange={(e) => setDate(e.target.value)}
                   placeholder="Event date"
                 />
@@ -457,138 +450,100 @@ const CreateEvent = () => {
               >
                 Stake
               </Button> */}
+              {participants.length > 0 ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Participants</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-6">
+                      <Form {...form}>
+                        <form
+                          onSubmit={form.handleSubmit(refund)}
+                          className="space-y-8"
+                        >
+                          <FormField
+                            control={form.control}
+                            name="items"
+                            render={() => (
+                              <FormItem>
+                                {participants.map((participant) => (
+                                  <FormField
+                                    key={participant.id}
+                                    control={form.control}
+                                    name="items"
+                                    render={({ field }) => {
+                                      return (
+                                        <FormItem
+                                          key={participant.id}
+                                          className="border rounded-lg p-4"
+                                        >
+                                          <div className="flex justify-between items-center p-2">
+                                            <FormLabel className="font-normal">
+                                              {participant.name}
+                                            </FormLabel>
+                                            <FormControl>
+                                              <Checkbox
+                                                checked={field.value?.includes(
+                                                  participant.id
+                                                )}
+                                                onCheckedChange={(checked) => {
+                                                  return checked
+                                                    ? field.onChange([
+                                                        ...field.value,
+                                                        participant.id,
+                                                      ])
+                                                    : field.onChange(
+                                                        field.value?.filter(
+                                                          (value: any) =>
+                                                            value !==
+                                                            participant.id
+                                                        )
+                                                      );
+                                                }}
+                                              />
+                                            </FormControl>
+                                          </div>
+                                        </FormItem>
+                                      );
+                                    }}
+                                  />
+                                ))}
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <Button className="w-full" type="submit">
+                            Refund
+                          </Button>
+                        </form>
+                      </Form>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Participants</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-6">
+                      <div className="border rounded-lg p-4">
+                        <div className="flex justify-between items-center p-2">
+                          No participants
+                        </div>
+                      </div>
+                      <Button className="w-full" disabled type="submit">
+                        Refund
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           )}
         </CardContent>
       </Card>
-
-      {participants.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Participants</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              <Form {...form}>
-                <form
-                  onSubmit={form.handleSubmit(refund)}
-                  className="space-y-8"
-                >
-                  <FormField
-                    control={form.control}
-                    name="items"
-                    render={() => (
-                      <FormItem>
-                        {participants.map((participant) => (
-                          <FormField
-                            key={participant.id}
-                            control={form.control}
-                            name="items"
-                            render={({ field }) => {
-                              return (
-                                <FormItem
-                                  key={participant.id}
-                                  className="border rounded-lg p-4"
-                                >
-                                  <div className="flex justify-between items-center p-2">
-                                    <FormLabel className="font-normal">
-                                      {participant.name}
-                                    </FormLabel>
-                                    <FormControl>
-                                      <Checkbox
-                                        checked={field.value?.includes(
-                                          participant.id
-                                        )}
-                                        onCheckedChange={(checked) => {
-                                          return checked
-                                            ? field.onChange([
-                                                ...field.value,
-                                                participant.id,
-                                              ])
-                                            : field.onChange(
-                                                field.value?.filter(
-                                                  (value: any) =>
-                                                    value !== participant.id
-                                                )
-                                              );
-                                        }}
-                                      />
-                                    </FormControl>
-                                  </div>
-                                </FormItem>
-                              );
-                            }}
-                          />
-                        ))}
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button className="w-full" type="submit">
-                    Refund
-                  </Button>
-                </form>
-              </Form>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Participants</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              <div className="border rounded-lg p-4">
-                <div className="flex justify-between items-center p-2">
-                  No participants
-                </div>
-              </div>
-              <Button className="w-full" disabled type="submit">
-                Refund
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Active Streams */}
-      {streams.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Active Streams</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              {streams.map((stream) => (
-                <div key={stream.id} className="space-y-4">
-                  <div className="border rounded-lg p-4">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="font-medium">Stream #{stream.id}</div>
-                        <div className="text-sm text-gray-500">
-                          To: {stream.recipient.slice(0, 8)}...
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-medium">{btcAmount} BTC</div>
-                        <div className="text-sm text-gray-500">
-                          {streamDuration} days
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <StreamBalance
-                    streamId={stream.id}
-                    recipientAddress={stream.recipient}
-                    initialBalance={stream.initialBalance}
-                  />
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 };
