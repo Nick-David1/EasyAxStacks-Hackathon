@@ -41,7 +41,7 @@ const CreateEvent = () => {
   useEffect(() => {
     if (userSession.isUserSignedIn()) {
       setWalletConnected(true);
-      setActiveStep(0);
+      setActiveStep(1);
       fetchEvents();
     }
   }, []);
@@ -82,6 +82,7 @@ const CreateEvent = () => {
       const data = await response.json();
       setEvents(data.events);
     } catch (err) {
+      console.error("Error fetching events:", err);
       setError("Failed to fetch events.");
     }
   };
@@ -199,6 +200,7 @@ const CreateEvent = () => {
       {/* Progress Steps */}
       <div className="flex justify-between mb-8">
         {[
+          { title: "Connect Wallet", icon: Wallet },
           { title: "Deposit BTC", icon: Bitcoin },
           { title: "Create Event", icon: Calendar },
           { title: "Complete", icon: RefreshCw },
@@ -225,13 +227,20 @@ const CreateEvent = () => {
       <Card>
         <CardHeader>
           <CardTitle>
-            {activeStep === 0 && "Deposit BTC"}
-            {activeStep === 1 && "Create Event"}
-            {activeStep === 2 && "Event Created!"}
+            {activeStep === 0 && "Connect Your Wallet"}
+            {activeStep === 1 && "Deposit BTC"}
+            {activeStep === 2 && "Create Event"}
+            {activeStep === 3 && "Event Created!"}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {activeStep === 0 && (
+            <Button onClick={connectWallet} className="w-full">
+              Connect Leather Wallet
+            </Button>
+          )}
+
+          {activeStep === 1 && (
             <>
               <div className="space-y-4">
                 <div>
@@ -257,7 +266,7 @@ const CreateEvent = () => {
             </>
           )}
 
-          {activeStep === 1 && (
+          {activeStep === 2 && (
             <>
               <Alert>
                 <AlertDescription>
@@ -333,7 +342,7 @@ const CreateEvent = () => {
             </>
           )}
 
-          {activeStep === 2 && (
+          {activeStep === 3 && (
             <div className="space-y-4">
               <Alert>
                 <AlertDescription>Event created successfully!</AlertDescription>

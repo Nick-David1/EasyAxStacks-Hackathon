@@ -109,7 +109,8 @@ const EventDetails: React.FC<EventDetailsProps> = ({ event }) => {
   // Helper to determine if the user is the organizer
   const isOrganizer = () => {
     const userData = userSession.loadUserData();
-    const userAddress = userData.profile.stxAddress.mainnet || userData.profile.stxAddress.devnet;
+    const userAddress =
+      userData.profile.stxAddress.mainnet || userData.profile.stxAddress.devnet;
     return userAddress === event.organizer;
   };
 
@@ -160,10 +161,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ event }) => {
             <CardTitle>Refund</CardTitle>
           </CardHeader>
           <CardContent>
-            <Button
-              onClick={refundStake}
-              className="w-full"
-            >
+            <Button onClick={refundStake} className="w-full">
               Refund Stake
             </Button>
           </CardContent>
