@@ -29,7 +29,7 @@ const Login = () => {
         },
         onFinish: () => {
           setWalletConnected(true);
-          router.push("/dashboard");
+          router.push("/events");
         },
         onCancel: () => {
           console.log("Wallet connection cancelled");

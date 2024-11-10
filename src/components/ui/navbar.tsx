@@ -41,6 +41,7 @@ export default function Navbar() {
         },
         onFinish: () => {
           setWalletConnected(true);
+          router.replace("/events");
         },
         onCancel: () => {
           console.log("Wallet connection cancelled");
