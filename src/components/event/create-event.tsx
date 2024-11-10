@@ -4,39 +4,19 @@ import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Bitcoin, ArrowRight, Calendar } from "lucide-react";
-import { openContractCall } from "@stacks/connect";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Wallet, Calendar, Users, RefreshCw, Bitcoin } from "lucide-react";
+import { showConnect, openContractCall } from "@stacks/connect";
 import { userSession } from "@/lib/userSession";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
 import {
   uintCV,
+  tupleCV,
   principalCV,
   stringAsciiCV,
+  boolCV,
   PostConditionMode,
 } from "@stacks/transactions";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Label } from "../ui/label";
-import { useToast } from "@/hooks/use-toast";
-import { Checkbox } from "@/components/ui/checkbox";
-import { useForm } from "react-hook-form";
+import EventDetails from "./event-details";
 
 interface Event {
   id: number;
@@ -50,97 +30,59 @@ interface Event {
   status: string;
 }
 
-interface Participant {
-  id: number;
-  name: string;
-  wallet: string;
-}
-
-const AttendanceSchema = z.object({
-  items: z.array(z.number()).refine((value) => value.some((item) => item), {
-    message: "You have to select at least one item",
-  }),
-});
-
 const CreateEvent = () => {
-  const { toast } = useToast();
   const [walletConnected, setWalletConnected] = useState(false);
   const [btcAmount, setBtcAmount] = useState("");
-  const [name, setName] = useState("");
-  const [location, setLocation] = useState("");
-  const [date, setDate] = useState("");
-  const [maxCapacity, setMaxCapacity] = useState(0);
-  const [stakeAmount, setStakeAmount] = useState(0);
-  const [streamDuration, setStreamDuration] = useState("2");
   const [activeStep, setActiveStep] = useState(0);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [participantId, setParticipantId] = useState(1);
-  const [participantName, setParticipantName] = useState("");
-  const [participantWallet, setParticipantWallet] = useState("");
-  const [participants, setParticipants] = useState<Participant[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const form = useForm<z.infer<typeof AttendanceSchema>>({
-    resolver: zodResolver(AttendanceSchema),
-    defaultValues: {
-      items: [], // Initialize with an empty selection
-    },
-  });
-
-  function refund(data: z.infer<typeof AttendanceSchema>) {
-    const remainingParticipants = participants.filter(
-      (participant) => !data.items.includes(participant.id)
-    );
-    setParticipants(remainingParticipants);
-    toast({
-      title: "The organizer refunded the stake",
-    });
-  }
 
   useEffect(() => {
     if (userSession.isUserSignedIn()) {
       setWalletConnected(true);
       setActiveStep(0);
+      fetchEvents();
     }
   }, []);
 
-  const fetchEvents = async () => {
+  const disconnectWallet = () => {
+    userSession.signUserOut();
+    setWalletConnected(false);
+    setActiveStep(0);
+  };
+
+  const connectWallet = async () => {
     try {
-      // Assuming there's a read-only function in the contract to get all events
-
-      const response = await fetch("/api/get-events"); // You'll need to implement this API
-
-      const data = await response.json();
-
-      setEvents(data.events);
-    } catch (err) {
-      console.error("Error fetching events:", err);
-
-      setError("Failed to fetch events.");
+      showConnect({
+        userSession,
+        appDetails: {
+          name: "Kickback on Stacks",
+          icon: window.location.origin + "/favicon.ico",
+        },
+        onFinish: () => {
+          setWalletConnected(true);
+          setActiveStep(1);
+          fetchEvents();
+        },
+        onCancel: () => {
+          console.log("Wallet connection cancelled");
+        },
+      });
+    } catch (error) {
+      console.error("Wallet connection error:", error);
     }
   };
 
-  const handleAddParticipant = () => {
-    if (participantName == "" || participantWallet == "") {
-      toast({
-        title: "Uh oh! Something went wrong.",
-        description: "All fields must be filled!",
-      });
-    } else {
-      const newParticipant: Participant = {
-        id: participantId,
-        name: participantName,
-        wallet: participantWallet,
-      };
-      toast({
-        title: "Participant successfully added!",
-        description: `${participantName} will be attending ${name}`,
-      });
-      setParticipants([...participants, newParticipant]);
-      setParticipantName("");
-      setParticipantWallet("");
-      setParticipantId(participantId + 1);
+  // Fetch all events from the smart contract
+  const fetchEvents = async () => {
+    try {
+      // Assuming there's a read-only function in the contract to get all events
+      const response = await fetch("/api/get-events"); // You'll need to implement this API
+      const data = await response.json();
+      setEvents(data.events);
+    } catch (err) {
+      setError("Failed to fetch events.");
     }
   };
 
@@ -169,13 +111,14 @@ const CreateEvent = () => {
           principalCV(
             userSession.loadUserData().profile.stxAddress.mainnet ||
               "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM"
-          ), // recipient
+          ), // recipient (user's address)
         ],
         postConditionMode: PostConditionMode.Allow,
         onFinish: (result) => {
           console.log("sBTC mint transaction:", result);
           setIsProcessing(false);
           setActiveStep(2);
+          fetchEvents(); // Refresh events after minting
         },
         onCancel: () => {
           console.log("sBTC mint cancelled");
@@ -189,6 +132,14 @@ const CreateEvent = () => {
   };
 
   const createEvent = async () => {
+    const [name, date, location, maxCapacity, stakeAmount] = [
+      (document.getElementById("eventName") as HTMLInputElement)?.value,
+      (document.getElementById("eventDate") as HTMLInputElement)?.value,
+      (document.getElementById("eventLocation") as HTMLInputElement)?.value,
+      (document.getElementById("eventCapacity") as HTMLInputElement)?.value,
+      (document.getElementById("stakeAmount") as HTMLInputElement)?.value,
+    ];
+
     if (!name || !date || !location || !maxCapacity || !stakeAmount) {
       alert("Please fill all fields");
       return;
@@ -197,8 +148,8 @@ const CreateEvent = () => {
     setIsProcessing(true);
     try {
       const eventDate = Math.floor(new Date(date).getTime() / 1000); // Unix timestamp
-      const maxCap = maxCapacity;
-      const stakeAmt = stakeAmount; // Convert to sats
+      const maxCap = parseInt(maxCapacity);
+      const stakeAmt = Math.floor(parseFloat(stakeAmount) * 100000000); // Convert to sats
 
       await openContractCall({
         network: "devnet",
@@ -232,13 +183,25 @@ const CreateEvent = () => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 p-4 mt-16">
+    <div className="max-w-3xl mx-auto space-y-6 p-4">
+      {walletConnected && (
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            onClick={disconnectWallet}
+            className="text-sm"
+          >
+            Disconnect Wallet
+          </Button>
+        </div>
+      )}
+
       {/* Progress Steps */}
       <div className="flex justify-between mb-8">
         {[
           { title: "Deposit BTC", icon: Bitcoin },
           { title: "Create Event", icon: Calendar },
-          { title: "Complete", icon: ArrowRight },
+          { title: "Complete", icon: RefreshCw },
         ].map((step, index) => (
           <div
             key={step.title}
@@ -295,255 +258,216 @@ const CreateEvent = () => {
           )}
 
           {activeStep === 1 && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Name</label>
-                <Input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Event name"
-                />
-              </div>
+            <>
+              <Alert>
+                <AlertDescription>
+                  {btcAmount} BTC successfully converted to sBTC!
+                </AlertDescription>
+              </Alert>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Location
-                </label>
-                <Input
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  placeholder="Event location"
-                />
-              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Event Name
+                  </label>
+                  <Input
+                    id="eventName"
+                    type="text"
+                    placeholder="Enter event name"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">Date</label>
-                <Input
-                  value={date}
-                  type="date"
-                  onChange={(e) => setDate(e.target.value)}
-                  placeholder="Event date"
-                />
-              </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Event Date
+                  </label>
+                  <Input
+                    id="eventDate"
+                    type="date"
+                    placeholder="Select event date"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Max capacity
-                </label>
-                <Input
-                  type="number"
-                  value={maxCapacity}
-                  onChange={(e) => setMaxCapacity(e.target.valueAsNumber)}
-                  placeholder="Maximum participants"
-                />
-              </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Location
+                  </label>
+                  <Input
+                    id="eventLocation"
+                    type="text"
+                    placeholder="Enter event location"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Stake Amount
-                </label>
-                <Input
-                  type="number"
-                  value={stakeAmount}
-                  onChange={(e) => setStakeAmount(e.target.valueAsNumber)}
-                  placeholder="Amount of stake to join"
-                />
-              </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Maximum Capacity
+                  </label>
+                  <Input
+                    id="eventCapacity"
+                    type="number"
+                    placeholder="Enter maximum number of participants"
+                  />
+                </div>
 
-              <Button
-                onClick={createEvent}
-                className="w-full"
-                disabled={isProcessing}
-              >
-                {isProcessing ? "Creating Event..." : "Create Event"}
-              </Button>
-            </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Stake Amount (sBTC)
+                  </label>
+                  <Input
+                    id="stakeAmount"
+                    type="number"
+                    placeholder="Enter stake amount in sBTC"
+                    step="0.00000001"
+                  />
+                </div>
+
+                <Button
+                  onClick={createEvent}
+                  className="w-full"
+                  disabled={isProcessing}
+                >
+                  {isProcessing ? "Creating Event..." : "Create Event"}
+                </Button>
+              </div>
+            </>
           )}
 
           {activeStep === 2 && (
             <div className="space-y-4">
+              <Alert>
+                <AlertDescription>Event created successfully!</AlertDescription>
+              </Alert>
+
               <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="font-medium mb-2">{name}</h3>
+                <h3 className="font-medium mb-2">Event Details</h3>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span>Capacity:</span>
-                    <span>{maxCapacity} people</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Stake Amount:</span>
-                    <span>{stakeAmount} BTC</span>
+                    <span>Name:</span>
+                    <span>Sample Event</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Date:</span>
-                    <span>{date}</span>
+                    <span>2024-12-31</span>
                   </div>
-
                   <div className="flex justify-between">
                     <span>Location:</span>
-                    <span>{location}</span>
+                    <span>Sample Location</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Capacity:</span>
+                    <span>100 Participants</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Stake Amount:</span>
+                    <span>1 sBTC</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Status:</span>
-                    <span className="text-green-600">Open</span>
+                    <span className="text-green-600">Active</span>
                   </div>
                 </div>
               </div>
 
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button className="w-full" variant="default">
-                    Stake
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[425px]">
-                  <DialogHeader>
-                    <DialogTitle>Participant</DialogTitle>
-                    <DialogDescription>
-                      Enter your information to stake and participate in this
-                      event.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="name" className="text-right">
-                        Name
-                      </Label>
-                      <Input
-                        id="name"
-                        placeholder="John Doe"
-                        onChange={(e) => setParticipantName(e.target.value)}
-                        className="col-span-3"
-                      />
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="wallet" className="text-right">
-                        Wallet
-                      </Label>
-                      <Input
-                        id="wallet"
-                        placeholder="tb1q0m3d9wpsm5dn50q6v"
-                        onChange={(e) => setParticipantWallet(e.target.value)}
-                        className="col-span-3"
-                      />
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <DialogClose asChild>
-                      <Button
-                        onClick={(e) => {
-                          handleAddParticipant();
-                        }}
-                      >
-                        Submit
-                      </Button>
-                    </DialogClose>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-              {/* <Button
+              <Button
                 onClick={() => {
                   setActiveStep(1);
                   setBtcAmount("");
-                  setStreamDuration("");
                 }}
                 className="w-full"
               >
-                Stake
-              </Button> */}
-              {participants.length > 0 ? (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Participants</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-6">
-                      <Form {...form}>
-                        <form
-                          onSubmit={form.handleSubmit(refund)}
-                          className="space-y-8"
-                        >
-                          <FormField
-                            control={form.control}
-                            name="items"
-                            render={() => (
-                              <FormItem>
-                                {participants.map((participant) => (
-                                  <FormField
-                                    key={participant.id}
-                                    control={form.control}
-                                    name="items"
-                                    render={({ field }) => {
-                                      return (
-                                        <FormItem
-                                          key={participant.id}
-                                          className="border rounded-lg p-4"
-                                        >
-                                          <div className="flex justify-between items-center p-2">
-                                            <FormLabel className="font-normal">
-                                              {participant.name}
-                                            </FormLabel>
-                                            <FormControl>
-                                              <Checkbox
-                                                checked={field.value?.includes(
-                                                  participant.id
-                                                )}
-                                                onCheckedChange={(checked) => {
-                                                  return checked
-                                                    ? field.onChange([
-                                                        ...field.value,
-                                                        participant.id,
-                                                      ])
-                                                    : field.onChange(
-                                                        field.value?.filter(
-                                                          (value: any) =>
-                                                            value !==
-                                                            participant.id
-                                                        )
-                                                      );
-                                                }}
-                                              />
-                                            </FormControl>
-                                          </div>
-                                        </FormItem>
-                                      );
-                                    }}
-                                  />
-                                ))}
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <Button className="w-full" type="submit">
-                            Refund
-                          </Button>
-                        </form>
-                      </Form>
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Participants</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-6">
-                      <div className="border rounded-lg p-4">
-                        <div className="flex justify-between items-center p-2">
-                          No participants
-                        </div>
-                      </div>
-                      <Button className="w-full" disabled type="submit">
-                        Refund
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+                Create Another Event
+              </Button>
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Events List */}
+      {events.length > 0 && (
+        <div className="space-y-6">
+          {events.map((event) => (
+            <Card key={event.id}>
+              <CardHeader>
+                <CardTitle>{event.name}</CardTitle>
+                <div className="text-sm text-gray-500">
+                  {new Date(event.date * 1000).toLocaleDateString()} @{" "}
+                  {event.location}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span>Organizer:</span>
+                    <span className="truncate ml-2">{event.organizer}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Capacity:</span>
+                    <span>
+                      {event.participants.length} / {event.maxCapacity}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Stake:</span>
+                    <span>
+                      {(event.stakeAmount / 100000000).toFixed(8)} sBTC
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Status:</span>
+                    <span
+                      className={
+                        event.status === "active"
+                          ? "text-green-600"
+                          : "text-red-600"
+                      }
+                    >
+                      {event.status.charAt(0).toUpperCase() +
+                        event.status.slice(1)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Register Button */}
+                {event.status === "active" && (
+                  <Button
+                    onClick={() => {
+                      // Implement registration logic here
+                      openContractCall({
+                        network: "devnet",
+                        contractAddress:
+                          "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
+                        contractName: "payment-stream",
+                        functionName: "register-and-stake",
+                        functionArgs: [uintCV(event.id)],
+                        postConditionMode: PostConditionMode.Allow,
+                        onFinish: (result) => {
+                          console.log(
+                            "Register and Stake Transaction ID:",
+                            result
+                          );
+                          fetchEvents(); // Refresh events after registration
+                        },
+                        onCancel: () => {
+                          console.log(
+                            "Register and Stake Transaction cancelled"
+                          );
+                        },
+                      });
+                    }}
+                    className="mt-4 w-full"
+                  >
+                    Register & Stake
+                  </Button>
+                )}
+
+                {/* Event Details and Actions */}
+                <EventDetails event={event} />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
