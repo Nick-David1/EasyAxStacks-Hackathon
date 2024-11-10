@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Bitcoin, ArrowRight, Calendar } from "lucide-react";
 import { openContractCall } from "@stacks/connect";
 import { userSession } from "@/lib/userSession";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   uintCV,
   tupleCV,
@@ -23,9 +25,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Label } from "../ui/label";
 import StreamBalance from "@/components/StreamBalance";
 import { useToast } from "@/hooks/use-toast";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useForm } from "react-hook-form";
 
 interface Stream {
   id: number;
@@ -46,6 +59,12 @@ interface Participant {
   wallet: string;
 }
 
+const AttendanceSchema = z.object({
+  items: z.array(z.number()).refine((value) => value.some((item) => item), {
+    message: "You have to select at least one item",
+  }),
+});
+
 const CreateEvent = () => {
   const { toast } = useToast();
   const [walletConnected, setWalletConnected] = useState(false);
@@ -63,6 +82,23 @@ const CreateEvent = () => {
   const [participantName, setParticipantName] = useState("");
   const [participantWallet, setParticipantWallet] = useState("");
   const [participants, setParticipants] = useState<Participant[]>([]);
+
+  const form = useForm<z.infer<typeof AttendanceSchema>>({
+    resolver: zodResolver(AttendanceSchema),
+    defaultValues: {
+      items: [], // Initialize with an empty selection
+    },
+  });
+
+  function refund(data: z.infer<typeof AttendanceSchema>) {
+    const remainingParticipants = participants.filter(
+      (participant) => !data.items.includes(participant.id)
+    );
+    setParticipants(remainingParticipants);
+    toast({
+      title: "The organizer refunded the stake",
+    });
+  }
 
   useEffect(() => {
     if (userSession.isUserSignedIn()) {
@@ -433,20 +469,66 @@ const CreateEvent = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
-              {participants.map((participant) => (
-                <div key={participant.id} className="space-y-4">
-                  <div className="border rounded-lg p-4">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="font-medium">{participant.name}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-medium">{stakeAmount} BTC</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+              <Form {...form}>
+                <form
+                  onSubmit={form.handleSubmit(refund)}
+                  className="space-y-8"
+                >
+                  <FormField
+                    control={form.control}
+                    name="items"
+                    render={() => (
+                      <FormItem>
+                        {participants.map((participant) => (
+                          <FormField
+                            key={participant.id}
+                            control={form.control}
+                            name="items"
+                            render={({ field }) => {
+                              return (
+                                <FormItem
+                                  key={participant.id}
+                                  className="border rounded-lg p-4"
+                                >
+                                  <div className="flex justify-between items-center p-2">
+                                    <FormLabel className="font-normal">
+                                      {participant.name}
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Checkbox
+                                        checked={field.value?.includes(
+                                          participant.id
+                                        )}
+                                        onCheckedChange={(checked) => {
+                                          return checked
+                                            ? field.onChange([
+                                                ...field.value,
+                                                participant.id,
+                                              ])
+                                            : field.onChange(
+                                                field.value?.filter(
+                                                  (value: any) =>
+                                                    value !== participant.id
+                                                )
+                                              );
+                                        }}
+                                      />
+                                    </FormControl>
+                                  </div>
+                                </FormItem>
+                              );
+                            }}
+                          />
+                        ))}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button className="w-full" type="submit">
+                    Refund
+                  </Button>
+                </form>
+              </Form>
             </div>
           </CardContent>
         </Card>
