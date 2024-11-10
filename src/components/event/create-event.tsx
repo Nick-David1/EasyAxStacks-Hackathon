@@ -120,7 +120,7 @@ const CreateEvent = () => {
         wallet: participantWallet,
       };
       toast({
-        title: "Participant added",
+        title: "Participant successfully added!",
         description: `${participantName} will be attending ${name}`,
       });
       setParticipants([...participants, newParticipant]);
@@ -462,7 +462,7 @@ const CreateEvent = () => {
         </CardContent>
       </Card>
 
-      {participants.length > 0 && (
+      {participants.length > 0 ? (
         <Card>
           <CardHeader>
             <CardTitle>Participants</CardTitle>
@@ -529,6 +529,24 @@ const CreateEvent = () => {
                   </Button>
                 </form>
               </Form>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Participants</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              <div className="border rounded-lg p-4">
+                <div className="flex justify-between items-center p-2">
+                  No participants
+                </div>
+              </div>
+              <Button className="w-full" disabled type="submit">
+                Refund
+              </Button>
             </div>
           </CardContent>
         </Card>
